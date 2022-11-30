@@ -1,6 +1,6 @@
 [package]
 name = "traewelling-exporter"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Marie Ramlow <me@nycode.dev>"]
 publish = false
 edition = "2021"

@@ -44,7 +44,6 @@ async fn main() {
     let metrics = create_metrics();
 
     let client = TraewellingClient::builder()
-        .with_base_url(Url::parse("http://localhost:8000/api/v1").unwrap())
         .with_token(std::env::var("TRAEWELLING_TOKEN").ok())
         .build();
 

@@ -15,5 +15,6 @@ RUN cargo build --release
 
 FROM scratch AS runtime
 WORKDIR /app
+EXPOSE 3000
 COPY --from=builder /app/target/release/traewelling-exporter /
 ENTRYPOINT ["/traewelling-exporter"]
