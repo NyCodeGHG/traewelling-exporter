@@ -16,3 +16,4 @@ jobs:
         with:
           generate_release_notes: true
           tag_name: ${{ steps.crate-version.outputs.version }}
+          token: ${{ secrets.GH_SECRET }}
