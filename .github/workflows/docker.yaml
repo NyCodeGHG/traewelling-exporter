@@ -25,7 +25,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/nycodeghg/genius-service:${{ github.ref_name }}
-            ghcr.io/nycodeghg/genius-service:latest
+            ghcr.io/${{ github.actor }}/${{ github.event.repository.name }}/exporter:${{ github.ref_name }}
+            ghcr.io/${{ github.actor }}/${{ github.event.repository.name }}/exporter:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
