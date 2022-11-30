@@ -1,0 +1,22 @@
+[package]
+name = "traewelling-exporter"
+version = "0.1.0"
+authors = ["Marie Ramlow <me@nycode.dev>"]
+publish = false
+edition = "2021"
+
+[dependencies]
+axum = "0.6"
+tokio = { version = "1", features = ["full"] }
+opentelemetry = "0.18"
+opentelemetry-prometheus = { version = "0.11", features = [
+    "prometheus-encoding",
+] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+reqwest = { version = "0.11", features = ["json"] }
+thiserror = "1"
+serde = { version = "1", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+dotenvy = "0.15"
+itertools = "0.10"
