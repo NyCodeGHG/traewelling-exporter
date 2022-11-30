@@ -37,7 +37,7 @@ fn init_meter() -> PrometheusExporter {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    dotenvy::dotenv().unwrap();
+    let _ = dotenvy::dotenv();
 
     let exporter = init_meter();
 
