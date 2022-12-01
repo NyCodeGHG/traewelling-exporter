@@ -23,6 +23,7 @@ serde = { version = "1", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 dotenvy = "0.15"
 itertools = "0.10"
+prometheus = { version = "0.13", features = ["process"] }
 
 [profile.release]
 lto = true

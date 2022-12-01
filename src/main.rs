@@ -16,18 +16,14 @@ use opentelemetry::{
     },
     Context, KeyValue,
 };
-use opentelemetry_prometheus::{PrometheusExporter, TextEncoder};
-use reqwest::Url;
+use opentelemetry_prometheus::{Encoder, PrometheusExporter, TextEncoder};
 use traewelling_exporter::traewelling::client::TraewellingClient;
 
 fn init_meter() -> PrometheusExporter {
-    let controller = controllers::basic(
-        processors::factory(
-            selectors::simple::histogram([1.0, 2.0, 5.0, 10.0, 20.0, 50.0]),
-            aggregation::cumulative_temporality_selector(),
-        )
-        .with_memory(true),
-    )
+    let controller = controllers::basic(processors::factory(
+        selectors::simple::histogram([1.0, 2.0, 5.0, 10.0, 20.0, 50.0]),
+        aggregation::cumulative_temporality_selector(),
+    ))
     .with_resource(Resource::default())
     .build();
 
@@ -44,6 +40,12 @@ async fn main() {
     let metrics = create_metrics();
 
     let client = TraewellingClient::builder()
+        .with_base_url(
+            std::env::var("TRAEWELLING_API")
+                .ok()
+                .and_then(|var| var.parse().ok())
+                .unwrap_or_else(|| "https://traewelling.de/api/v1".parse().unwrap()),
+        )
         .with_token(std::env::var("TRAEWELLING_TOKEN").ok())
         .build();
 
@@ -156,7 +158,12 @@ fn create_metrics() -> Metrics {
 }
 
 async fn metrics_handler<'a>(State(AppState { exporter, .. }): State<AppState>) -> String {
+    let mut text = String::new();
     let encoder = TextEncoder::new();
     let metrics = exporter.registry().gather();
-    encoder.encode_to_string(&metrics).unwrap()
+    text += &encoder.encode_to_string(&metrics).unwrap();
+    text += "\n\n";
+    let metrics = prometheus::gather();
+    text += &encoder.encode_to_string(&metrics).unwrap();
+    text
 }
