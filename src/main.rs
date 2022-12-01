@@ -1,10 +1,10 @@
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
-    time::Duration,
 };
 
-use axum::{extract::State, routing::get, Router};
+use axum::{extract::State, response::Html, routing::get, Router};
+use cached::proc_macro::cached;
 use itertools::Itertools;
 use opentelemetry::{
     global,
@@ -17,6 +17,7 @@ use opentelemetry::{
     Context, KeyValue,
 };
 use opentelemetry_prometheus::{PrometheusExporter, TextEncoder};
+use reqwest::StatusCode;
 use traewelling_exporter::traewelling::client::TraewellingClient;
 
 fn init_meter() -> PrometheusExporter {
@@ -30,6 +31,18 @@ fn init_meter() -> PrometheusExporter {
     opentelemetry_prometheus::exporter(controller).init()
 }
 
+lazy_static::lazy_static! {
+    static ref CLIENT: TraewellingClient = TraewellingClient::builder()
+        .with_base_url(
+            std::env::var("TRAEWELLING_API")
+                .ok()
+                .and_then(|var| var.parse().ok())
+                .unwrap_or_else(|| "https://traewelling.de/api/v1".parse().unwrap()),
+        )
+        .with_token(std::env::var("TRAEWELLING_TOKEN").ok())
+        .build();
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -39,66 +52,13 @@ async fn main() {
 
     let metrics = create_metrics();
 
-    let client = TraewellingClient::builder()
-        .with_base_url(
-            std::env::var("TRAEWELLING_API")
-                .ok()
-                .and_then(|var| var.parse().ok())
-                .unwrap_or_else(|| "https://traewelling.de/api/v1".parse().unwrap()),
-        )
-        .with_token(std::env::var("TRAEWELLING_TOKEN").ok())
-        .build();
-
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(10));
-        let cx = Context::current();
-        loop {
-            interval.tick().await;
-            let checkins = match client.statuses().get_active_statuses().await {
-                Ok(data) => {
-                    metrics
-                        .traewelling_requests
-                        .add(&cx, 1, &[KeyValue::new("success", true)]);
-                    data.data
-                }
-                Err(e) => {
-                    metrics
-                        .traewelling_requests
-                        .add(&cx, 1, &[KeyValue::new("success", false)]);
-                    tracing::error!("Traewelling Request failed: {}", e);
-                    continue;
-                }
-            };
-            tracing::trace!("Observing {} checkins", checkins.len());
-            for (_, data) in &checkins
-                .into_iter()
-                .map(|checkin| CheckinData {
-                    category: checkin.train.category,
-                    line_name: checkin.train.line_name,
-                    distance: checkin.train.distance,
-                    duration: checkin.train.duration,
-                    number: checkin.train.number,
-                    speed: checkin.train.speed.to_string(),
-                })
-                .group_by(|data| {
-                    let mut hasher = DefaultHasher::new();
-                    data.hash(&mut hasher);
-                    hasher.finish()
-                })
-            {
-                let data = data.collect_vec();
-                let length = data.len();
-                let first = data.into_iter().next().unwrap();
-                let key_value: Vec<KeyValue> = first.into();
-                metrics.checkins.observe(&cx, length as u64, &key_value);
-            }
-        }
-    });
-
-    let app_state = AppState { exporter };
+    let app_state = AppState { exporter, metrics };
 
     let app = Router::new()
+        .route("/", get(index_handler))
+        .route("/index.html", get(index_handler))
         .route("/metrics", get(metrics_handler))
+        .route("/healthz", get(|| async { StatusCode::OK }))
         .with_state(app_state);
 
     let address = "0.0.0.0:3000".parse().unwrap();
@@ -107,7 +67,7 @@ async fn main() {
     server.await.unwrap();
 }
 
-#[derive(Hash, Debug)]
+#[derive(Hash, Debug, PartialEq, Eq, Clone)]
 struct CheckinData {
     pub category: String,
     pub distance: i32,
@@ -133,6 +93,7 @@ impl From<CheckinData> for Vec<KeyValue> {
 #[derive(Clone)]
 struct AppState {
     exporter: PrometheusExporter,
+    metrics: Metrics,
 }
 
 #[derive(Clone)]
@@ -157,7 +118,14 @@ fn create_metrics() -> Metrics {
     }
 }
 
-async fn metrics_handler<'a>(State(AppState { exporter, .. }): State<AppState>) -> String {
+async fn metrics_handler<'a>(
+    State(AppState { exporter, metrics }): State<AppState>,
+) -> Result<String, String> {
+    let Ok(data) = fetch_metrics(&metrics, "metrics").await else {
+        return Err("Failed to fetch journeys".to_string());
+    };
+    record_metrics(data, &metrics);
+
     let mut text = String::new();
     let encoder = TextEncoder::new();
     let metrics = exporter.registry().gather();
@@ -165,5 +133,71 @@ async fn metrics_handler<'a>(State(AppState { exporter, .. }): State<AppState>) 
     text += "\n\n";
     let metrics = prometheus::gather();
     text += &encoder.encode_to_string(&metrics).unwrap();
-    text
+    Ok(text)
+}
+
+#[cached(
+    time = 30,
+    sync_writes = true,
+    key = "String",
+    result = true,
+    convert = r#"{String::from(_cache_key)}"#
+)]
+async fn fetch_metrics(
+    metrics: &Metrics,
+    _cache_key: &str,
+) -> Result<Vec<(CheckinData, usize)>, ()> {
+    let cx = Context::current();
+    let checkins = match CLIENT.statuses().get_active_statuses().await {
+        Ok(data) => {
+            metrics
+                .traewelling_requests
+                .add(&cx, 1, &[KeyValue::new("success", true)]);
+            data.data
+        }
+        Err(e) => {
+            metrics
+                .traewelling_requests
+                .add(&cx, 1, &[KeyValue::new("success", false)]);
+            tracing::error!("Traewelling Request failed: {}", e);
+            return Err(());
+        }
+    };
+    tracing::trace!("Observing {} checkins", checkins.len());
+    let checkins = checkins
+        .into_iter()
+        .map(|checkin| CheckinData {
+            category: checkin.train.category,
+            line_name: checkin.train.line_name,
+            distance: checkin.train.distance,
+            duration: checkin.train.duration,
+            number: checkin.train.number,
+            speed: checkin.train.speed.to_string(),
+        })
+        .group_by(|data| {
+            let mut hasher = DefaultHasher::new();
+            data.hash(&mut hasher);
+            hasher.finish()
+        })
+        .into_iter()
+        .map(|(_, group)| {
+            let data: Vec<CheckinData> = group.collect();
+            let length = data.len();
+            let first = data.into_iter().next().unwrap();
+            (first, length)
+        })
+        .collect();
+    Ok(checkins)
+}
+
+fn record_metrics(data: Vec<(CheckinData, usize)>, metrics: &Metrics) {
+    let cx = Context::current();
+    for (checkin, amount) in data {
+        let key_value: Vec<KeyValue> = checkin.into();
+        metrics.checkins.observe(&cx, amount as u64, &key_value);
+    }
+}
+
+async fn index_handler() -> Html<String> {
+    Html(include_str!("index.html").replace("%VERSION%", env!("CARGO_PKG_VERSION")))
 }
