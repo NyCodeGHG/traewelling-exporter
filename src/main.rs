@@ -1,5 +1,6 @@
 use std::{
     collections::hash_map::DefaultHasher,
+    future,
     hash::{Hash, Hasher},
 };
 
@@ -21,11 +22,16 @@ use reqwest::StatusCode;
 use traewelling_exporter::traewelling::client::TraewellingClient;
 
 fn init_meter() -> PrometheusExporter {
+    std::env::set_var("OTEL_SERVICE_NAME", env!("CARGO_PKG_NAME"));
     let controller = controllers::basic(processors::factory(
         selectors::simple::histogram([1.0, 2.0, 5.0, 10.0, 20.0, 50.0]),
         aggregation::cumulative_temporality_selector(),
     ))
     .with_resource(Resource::default())
+    .with_resource(Resource::new([KeyValue::new(
+        "service.version",
+        env!("CARGO_PKG_VERSION"),
+    )]))
     .build();
 
     opentelemetry_prometheus::exporter(controller).init()
@@ -62,9 +68,26 @@ async fn main() {
         .with_state(app_state);
 
     let address = "0.0.0.0:3000".parse().unwrap();
-    let server = axum::Server::bind(&address).serve(app.into_make_service());
+    let server = axum::Server::bind(&address)
+        .serve(app.into_make_service())
+        .with_graceful_shutdown(shutdown_signal());
     tracing::info!("Server listening on http://{}", address);
     server.await.unwrap();
+}
+
+#[cfg(not(unix))]
+async fn shutdown_signal() {
+    future::pending::<()>().await;
+}
+
+#[cfg(unix)]
+async fn shutdown_signal() {
+    let signals =
+        Signals::new(&[SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create signal handler");
+
+    signals.next().await;
+
+    tracing::info!("signal received, starting graceful shutdown");
 }
 
 #[derive(Hash, Debug, PartialEq, Eq, Clone)]

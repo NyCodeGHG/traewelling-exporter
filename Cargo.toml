@@ -1,6 +1,6 @@
 [package]
 name = "traewelling-exporter"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Marie Ramlow <me@nycode.dev>"]
 publish = false
 edition = "2021"
@@ -26,6 +26,9 @@ itertools = "0.10"
 prometheus = { version = "0.13", features = ["process"] }
 lazy_static = "1.4"
 cached = "0.40"
+
+[target.'cfg(unix)'.dependencies]
+signal-hook-tokio = "0.3"
 
 [profile.release]
 lto = true
