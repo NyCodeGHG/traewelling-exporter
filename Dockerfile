@@ -1,6 +1,4 @@
-FROM rust:alpine as chef
-RUN apk add --no-cache musl-dev && cargo install cargo-chef --locked
-
+FROM registry.nycode.dev/library/rust-chef:1.65.0-alpine
 WORKDIR /app
 
 FROM chef AS planner
