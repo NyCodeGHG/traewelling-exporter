@@ -1,4 +1,4 @@
-FROM registry.nycode.dev/library/rust-chef:1.65.0-alpine
+FROM registry.nycode.dev/library/rust-chef:1.65.0-alpine as chef
 WORKDIR /app
 
 FROM chef AS planner
