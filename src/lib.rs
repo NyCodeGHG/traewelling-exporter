@@ -90,15 +90,14 @@ pub mod traewelling {
 
         impl<'a> StatusCategory<'a> {
             pub async fn get_active_statuses(&self) -> Result<ActiveStatusesResponse, Error> {
-                let response = self
+                let mut request = self
                     .client
                     .client
-                    .get(format!("{}/statuses", self.client.base_url))
-                    .bearer_auth(self.client.token.as_ref().unwrap())
-                    .send()
-                    .await?
-                    .json()
-                    .await?;
+                    .get(format!("{}/statuses", self.client.base_url));
+                if let Some(token) = self.client.token.as_ref() {
+                    request = request.bearer_auth(token.as_str());
+                }
+                let response = request.send().await?.json().await?;
                 Ok(response)
             }
         }
