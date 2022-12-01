@@ -21,6 +21,9 @@ use opentelemetry_prometheus::{PrometheusExporter, TextEncoder};
 use reqwest::StatusCode;
 use traewelling_exporter::traewelling::client::TraewellingClient;
 
+#[cfg(unix)]
+use signal_hook_tokio::Signals;
+
 fn init_meter() -> PrometheusExporter {
     std::env::set_var("OTEL_SERVICE_NAME", env!("CARGO_PKG_NAME"));
     let controller = controllers::basic(processors::factory(
