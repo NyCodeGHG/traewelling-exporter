@@ -371,6 +371,7 @@ checksum = "38390104763dc37a5145a53c29c63c1290b5d316d6086ec32c293f6736051bb0"
 dependencies = [
  "futures-channel",
  "futures-core",
+ "futures-executor",
  "futures-io",
  "futures-sink",
  "futures-task",
@@ -439,10 +440,13 @@ version = "0.3.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "197676987abd2f9cadff84926f410af1c183608d36641465df73ae8211dc65d6"
 dependencies = [
+ "futures-channel",
  "futures-core",
+ "futures-io",
  "futures-macro",
  "futures-sink",
  "futures-task",
+ "memchr",
  "pin-project-lite",
  "pin-utils",
  "slab",
@@ -1224,6 +1228,7 @@ version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "213241f76fb1e37e27de3b6aa1b068a2c333233b59cca6634f634b80a27ecf1e"
 dependencies = [
+ "futures-core",
  "libc",
  "signal-hook",
  "tokio",
@@ -1517,6 +1522,7 @@ dependencies = [
  "cached",
  "chrono",
  "dotenvy",
+ "futures",
  "itertools",
  "lazy_static",
  "opentelemetry",
@@ -1524,6 +1530,7 @@ dependencies = [
  "prometheus",
  "reqwest",
  "serde",
+ "signal-hook",
  "signal-hook-tokio",
  "thiserror",
  "tokio",

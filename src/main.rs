@@ -1,6 +1,5 @@
 use std::{
     collections::hash_map::DefaultHasher,
-    future,
     hash::{Hash, Hasher},
 };
 
@@ -21,6 +20,10 @@ use opentelemetry_prometheus::{PrometheusExporter, TextEncoder};
 use reqwest::StatusCode;
 use traewelling_exporter::traewelling::client::TraewellingClient;
 
+#[cfg(unix)]
+use futures::stream::StreamExt;
+#[cfg(unix)]
+use signal_hook::consts::*;
 #[cfg(unix)]
 use signal_hook_tokio::Signals;
 
@@ -85,7 +88,7 @@ async fn shutdown_signal() {
 
 #[cfg(unix)]
 async fn shutdown_signal() {
-    let signals =
+    let mut signals =
         Signals::new(&[SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create signal handler");
 
     signals.next().await;

@@ -28,7 +28,9 @@ lazy_static = "1.4"
 cached = "0.40"
 
 [target.'cfg(unix)'.dependencies]
-signal-hook-tokio = "0.3"
+signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
+signal-hook = "0.3"
+futures = "0.3"
 
 [profile.release]
 lto = true
