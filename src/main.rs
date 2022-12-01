@@ -16,7 +16,7 @@ use opentelemetry::{
     },
     Context, KeyValue,
 };
-use opentelemetry_prometheus::{Encoder, PrometheusExporter, TextEncoder};
+use opentelemetry_prometheus::{PrometheusExporter, TextEncoder};
 use traewelling_exporter::traewelling::client::TraewellingClient;
 
 fn init_meter() -> PrometheusExporter {
