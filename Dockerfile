@@ -1,4 +1,5 @@
-FROM registry.nycode.dev/library/rust-chef:1.65.0-alpine as chef
+FROM rustlang/rust:nightly-alpine as chef
+RUN cargo install cargo-chef 
 WORKDIR /app
 
 FROM chef AS planner

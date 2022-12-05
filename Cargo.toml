@@ -26,6 +26,7 @@ itertools = "0.10"
 prometheus = { version = "0.13", features = ["process"] }
 lazy_static = "1.4"
 cached = "0.40"
+konst = "0.3"
 
 [target.'cfg(unix)'.dependencies]
 signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }

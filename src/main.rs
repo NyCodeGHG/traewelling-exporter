@@ -1,9 +1,11 @@
+#![feature(const_slice_index)]
+
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
 };
 
-use axum::{extract::State, response::Html, routing::get, Router};
+use axum::{extract::State, routing::get, Router};
 use cached::proc_macro::cached;
 use itertools::Itertools;
 use opentelemetry::{
@@ -26,6 +28,8 @@ use futures::stream::StreamExt;
 use signal_hook::consts::*;
 #[cfg(unix)]
 use signal_hook_tokio::Signals;
+
+mod index;
 
 fn init_meter() -> PrometheusExporter {
     std::env::set_var("OTEL_SERVICE_NAME", env!("CARGO_PKG_NAME"));
@@ -67,8 +71,8 @@ async fn main() {
     let app_state = AppState { exporter, metrics };
 
     let app = Router::new()
-        .route("/", get(index_handler))
-        .route("/index.html", get(index_handler))
+        .route("/", get(index::index_handler))
+        .route("/index.html", get(index::index_handler))
         .route("/metrics", get(metrics_handler))
         .route("/healthz", get(|| async { StatusCode::OK }))
         .with_state(app_state);
@@ -225,8 +229,4 @@ fn record_metrics(data: Vec<(CheckinData, usize)>, metrics: &Metrics) {
         let key_value: Vec<KeyValue> = checkin.into();
         metrics.checkins.observe(&cx, amount as u64, &key_value);
     }
-}
-
-async fn index_handler() -> Html<String> {
-    Html(include_str!("index.html").replace("%VERSION%", env!("CARGO_PKG_VERSION")))
 }
