@@ -9,7 +9,8 @@ use axum::{extract::State, response::Redirect, routing::get, Router};
 use cached::proc_macro::cached;
 use itertools::Itertools;
 use prometheus::{
-    opts, register_int_counter, register_int_gauge_vec, IntCounter, IntGaugeVec, Registry, TextEncoder,
+    opts, register_int_counter, register_int_gauge_vec, IntCounter, IntGaugeVec, Registry,
+    TextEncoder,
 };
 use reqwest::StatusCode;
 use traewelling_exporter::traewelling::client::TraewellingClient;

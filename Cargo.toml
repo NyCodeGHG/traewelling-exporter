@@ -2,6 +2,8 @@
 name = "traewelling-exporter"
 version = "0.3.0"
 authors = ["Marie Ramlow <me@nycode.dev>"]
+description = "Prometheus Exporter for traewelling.de"
+license = "MIT OR Apache-2.0"
 publish = false
 edition = "2021"
 
