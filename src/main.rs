@@ -1,51 +1,18 @@
 #![feature(const_slice_index)]
 
 use std::{
-    collections::hash_map::DefaultHasher,
+    collections::{hash_map::DefaultHasher, HashMap},
     hash::{Hash, Hasher},
 };
 
-use axum::{extract::State, routing::get, Router};
+use axum::{extract::State, response::Redirect, routing::get, Router};
 use cached::proc_macro::cached;
 use itertools::Itertools;
-use opentelemetry::{
-    global,
-    metrics::{Counter, ObservableGauge},
-    sdk::{
-        export::metrics::aggregation,
-        metrics::{controllers, processors, selectors},
-        Resource,
-    },
-    Context, KeyValue,
+use prometheus::{
+    opts, register_int_counter, register_int_gauge_vec, IntCounter, IntGaugeVec, Registry, TextEncoder,
 };
-use opentelemetry_prometheus::{PrometheusExporter, TextEncoder};
 use reqwest::StatusCode;
 use traewelling_exporter::traewelling::client::TraewellingClient;
-
-#[cfg(unix)]
-use futures::stream::StreamExt;
-#[cfg(unix)]
-use signal_hook::consts::*;
-#[cfg(unix)]
-use signal_hook_tokio::Signals;
-
-mod index;
-
-fn init_meter() -> PrometheusExporter {
-    std::env::set_var("OTEL_SERVICE_NAME", env!("CARGO_PKG_NAME"));
-    let controller = controllers::basic(processors::factory(
-        selectors::simple::histogram([1.0, 2.0, 5.0, 10.0, 20.0, 50.0]),
-        aggregation::cumulative_temporality_selector(),
-    ))
-    .with_resource(Resource::default())
-    .with_resource(Resource::new([KeyValue::new(
-        "service.version",
-        env!("CARGO_PKG_VERSION"),
-    )]))
-    .build();
-
-    opentelemetry_prometheus::exporter(controller).init()
-}
 
 lazy_static::lazy_static! {
     static ref CLIENT: TraewellingClient = TraewellingClient::builder()
@@ -60,99 +27,94 @@ lazy_static::lazy_static! {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     let _ = dotenvy::dotenv();
 
-    let exporter = init_meter();
+    let metrics = create_metrics()?;
 
-    let metrics = create_metrics();
-
-    let app_state = AppState { exporter, metrics };
+    let app_state = AppState { metrics };
 
     let app = Router::new()
-        .route("/", get(index::index_handler))
-        .route("/index.html", get(index::index_handler))
+        .route("/", get(|| async { Redirect::permanent("/metrics") }))
         .route("/metrics", get(metrics_handler))
         .route("/healthz", get(|| async { StatusCode::OK }))
         .with_state(app_state);
 
-    let address = "0.0.0.0:3000".parse().unwrap();
+    let address = "0.0.0.0:3000".parse()?;
     let server = axum::Server::bind(&address)
         .serve(app.into_make_service())
         .with_graceful_shutdown(shutdown_signal());
-    tracing::info!("Server listening on http://{}", address);
-    server.await.unwrap();
+    tracing::info!("Server listening on http://localhost:3000");
+    server.await?;
+    Ok(())
 }
 
-#[cfg(not(unix))]
 async fn shutdown_signal() {
-    future::pending::<()>().await;
-}
-
-#[cfg(unix)]
-async fn shutdown_signal() {
-    let mut signals =
-        Signals::new(&[SIGTERM, SIGINT, SIGQUIT]).expect("Failed to create signal handler");
-
-    signals.next().await;
-
-    tracing::info!("signal received, starting graceful shutdown");
+    tokio::signal::ctrl_c()
+        .await
+        .expect("Failed to register signal hook")
 }
 
 #[derive(Hash, Debug, PartialEq, Eq, Clone)]
 struct CheckinData {
     pub category: String,
-    pub distance: i32,
+    pub distance: String,
     pub line_name: String,
     pub number: String,
-    pub duration: i32,
+    pub duration: String,
     pub speed: String,
 }
 
-impl From<CheckinData> for Vec<KeyValue> {
-    fn from(data: CheckinData) -> Self {
-        vec![
-            KeyValue::new("checkin.category", data.category),
-            KeyValue::new("checkin.distance", data.distance.to_string()),
-            KeyValue::new("checkin.line_name", data.line_name),
-            KeyValue::new("checkin.number", data.number),
-            KeyValue::new("checkin.duration", data.duration.to_string()),
-            KeyValue::new("checkin.speed", data.speed),
-        ]
+impl<'a> From<&'a CheckinData> for HashMap<&str, &'a str> {
+    fn from(data: &'a CheckinData) -> Self {
+        HashMap::from([
+            ("checkin_category", data.category.as_str()),
+            ("checkin_distance", data.distance.as_str()),
+            ("checkin_line_name", data.line_name.as_str()),
+            ("checkin_number", data.number.as_str()),
+            ("checkin_duration", data.duration.as_str()),
+            ("checkin_speed", data.speed.as_str()),
+        ])
     }
 }
 
 #[derive(Clone)]
 struct AppState {
-    exporter: PrometheusExporter,
     metrics: Metrics,
 }
 
 #[derive(Clone)]
 struct Metrics {
-    checkins: ObservableGauge<u64>,
-    traewelling_requests: Counter<u64>,
+    checkins: IntGaugeVec,
+    traewelling_requests: IntCounter,
 }
 
-fn create_metrics() -> Metrics {
-    let meter = global::meter("traewelling-exporter");
-    let checkins = meter
-        .u64_observable_gauge("journeys")
-        .with_description("Current Journeys")
-        .init();
-    let traewelling_requests = meter
-        .u64_counter("traewelling_requests")
-        .with_description("HTTP Requests sent to Traewelling API")
-        .init();
-    Metrics {
+fn create_metrics() -> Result<Metrics, prometheus::Error> {
+    let checkins = register_int_gauge_vec!(
+        "journeys",
+        "Current Journeys",
+        &[
+            "checkin_category",
+            "checkin_distance",
+            "checkin_line_name",
+            "checkin_number",
+            "checkin_duration",
+            "checkin_speed"
+        ]
+    )?;
+    let traewelling_requests = register_int_counter!(opts!(
+        "traewelling_requests",
+        "HTTP Requests sent to Traewelling API"
+    ))?;
+    Ok(Metrics {
         checkins,
         traewelling_requests,
-    }
+    })
 }
 
 async fn metrics_handler<'a>(
-    State(AppState { exporter, metrics }): State<AppState>,
+    State(AppState { metrics }): State<AppState>,
 ) -> Result<String, String> {
     let Ok(data) = fetch_metrics(&metrics, "metrics").await else {
         return Err("Failed to fetch journeys".to_string());
@@ -161,7 +123,7 @@ async fn metrics_handler<'a>(
 
     let mut text = String::new();
     let encoder = TextEncoder::new();
-    let metrics = exporter.registry().gather();
+    let metrics = Registry::default().gather();
     text += &encoder.encode_to_string(&metrics).unwrap();
     text += "\n\n";
     let metrics = prometheus::gather();
@@ -170,7 +132,7 @@ async fn metrics_handler<'a>(
 }
 
 #[cached(
-    time = 30,
+    time = 2,
     sync_writes = true,
     key = "String",
     result = true,
@@ -180,18 +142,13 @@ async fn fetch_metrics(
     metrics: &Metrics,
     _cache_key: &str,
 ) -> Result<Vec<(CheckinData, usize)>, ()> {
-    let cx = Context::current();
     let checkins = match CLIENT.statuses().get_active_statuses().await {
         Ok(data) => {
-            metrics
-                .traewelling_requests
-                .add(&cx, 1, &[KeyValue::new("success", true)]);
+            metrics.traewelling_requests.inc();
             data.data
         }
         Err(e) => {
-            metrics
-                .traewelling_requests
-                .add(&cx, 1, &[KeyValue::new("success", false)]);
+            metrics.traewelling_requests.inc();
             tracing::error!("Traewelling Request failed: {}", e);
             return Err(());
         }
@@ -202,8 +159,8 @@ async fn fetch_metrics(
         .map(|checkin| CheckinData {
             category: checkin.train.category,
             line_name: checkin.train.line_name,
-            distance: checkin.train.distance,
-            duration: checkin.train.duration,
+            distance: checkin.train.distance.to_string(),
+            duration: checkin.train.duration.to_string(),
             number: checkin.train.number,
             speed: checkin.train.speed.to_string(),
         })
@@ -224,9 +181,13 @@ async fn fetch_metrics(
 }
 
 fn record_metrics(data: Vec<(CheckinData, usize)>, metrics: &Metrics) {
-    let cx = Context::current();
-    for (checkin, amount) in data {
-        let key_value: Vec<KeyValue> = checkin.into();
-        metrics.checkins.observe(&cx, amount as u64, &key_value);
+    metrics.checkins.reset();
+    for (ref checkin, amount) in data {
+        let map = checkin.into();
+        metrics
+            .checkins
+            .get_metric_with(&map)
+            .unwrap()
+            .set(amount as i64);
     }
 }
