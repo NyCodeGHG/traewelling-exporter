@@ -11,5 +11,5 @@ jobs:
         with:
           release-type: rust
           package-name: traewelling-exporter
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ secrets.GH_SECRET }}
 
