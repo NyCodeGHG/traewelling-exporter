@@ -1,6 +1,6 @@
 [package]
 name = "traewelling-exporter"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Marie Ramlow <me@nycode.dev>"]
 description = "Prometheus Exporter for traewelling.de"
 license = "MIT OR Apache-2.0"
