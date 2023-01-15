@@ -65,17 +65,27 @@ struct CheckinData {
     pub number: String,
     pub duration: String,
     pub speed: String,
+    pub user_id: String,
+    pub username: String,
+    pub origin: String,
+    pub destination: String,
+    pub event_id: Option<String>,
+    pub event_name: Option<String>,
 }
 
 impl<'a> From<&'a CheckinData> for HashMap<&str, &'a str> {
     fn from(data: &'a CheckinData) -> Self {
         HashMap::from([
-            ("checkin_category", data.category.as_str()),
-            ("checkin_distance", data.distance.as_str()),
-            ("checkin_line_name", data.line_name.as_str()),
-            ("checkin_number", data.number.as_str()),
-            ("checkin_duration", data.duration.as_str()),
-            ("checkin_speed", data.speed.as_str()),
+            ("category", data.category.as_str()),
+            ("distance", data.distance.as_str()),
+            ("line_name", data.line_name.as_str()),
+            ("number", data.number.as_str()),
+            ("duration", data.duration.as_str()),
+            ("speed", data.speed.as_str()),
+            ("user_id", data.user_id.as_str()),
+            ("user_name", data.username.as_str()),
+            ("destination", data.destination.as_str()),
+            ("origin", data.origin.as_str()),
         ])
     }
 }
@@ -96,12 +106,16 @@ fn create_metrics() -> Result<Metrics, prometheus::Error> {
         "journeys",
         "Current Journeys",
         &[
-            "checkin_category",
-            "checkin_distance",
-            "checkin_line_name",
-            "checkin_number",
-            "checkin_duration",
-            "checkin_speed"
+            "category",
+            "distance",
+            "line_name",
+            "number",
+            "duration",
+            "speed",
+            "user_id",
+            "user_name",
+            "origin",
+            "destination",
         ]
     )?;
     let traewelling_requests = register_int_counter!(opts!(
@@ -124,9 +138,11 @@ async fn metrics_handler<'a>(
 
     let mut text = String::new();
     let encoder = TextEncoder::new();
-    let metrics = Registry::default().gather();
-    text += &encoder.encode_to_string(&metrics).unwrap();
-    text += "\n\n";
+    {
+        let metrics = Registry::default().gather();
+        text += &encoder.encode_to_string(&metrics).unwrap();
+        text += "\n\n";
+    }
     let metrics = prometheus::gather();
     text += &encoder.encode_to_string(&metrics).unwrap();
     Ok(text)
@@ -164,6 +180,12 @@ async fn fetch_metrics(
             duration: checkin.train.duration.to_string(),
             number: checkin.train.number,
             speed: checkin.train.speed.to_string(),
+            user_id: checkin.user.to_string(),
+            username: checkin.username,
+            origin: checkin.train.origin.name,
+            destination: checkin.train.destination.name,
+            event_id: checkin.event.as_ref().map(|event| event.id.to_string()),
+            event_name: checkin.event.map(|event| event.name),
         })
         .group_by(|data| {
             let mut hasher = DefaultHasher::new();

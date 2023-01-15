@@ -1,3 +1,4 @@
+use reqwest::StatusCode;
 use thiserror::Error;
 
 pub mod traewelling {
@@ -97,8 +98,14 @@ pub mod traewelling {
                 if let Some(token) = self.client.token.as_ref() {
                     request = request.bearer_auth(token.as_str());
                 }
-                let response = request.send().await?.json().await?;
-                Ok(response)
+                let response = request.send().await?;
+                if !response.status().is_success() {
+                    return Err(Error::InvalidTrwlResponse(crate::TrwlErrorResponse {
+                        status_code: response.status(),
+                        message: response.text().await?,
+                    }));
+                }
+                Ok(response.json().await?)
             }
         }
 
@@ -115,6 +122,7 @@ pub mod traewelling {
             pub business: i32,
             pub created_at: DateTime<FixedOffset>,
             pub train: Train,
+            pub event: Option<Event>,
         }
 
         #[derive(Debug, Deserialize, Serialize)]
@@ -135,8 +143,16 @@ pub mod traewelling {
 
         #[derive(Debug, Deserialize, Serialize)]
         #[serde(rename_all = "camelCase")]
+        pub struct Event {
+            pub id: i32,
+            pub name: String,
+        }
+
+        #[derive(Debug, Deserialize, Serialize)]
+        #[serde(rename_all = "camelCase")]
         pub struct TrainStopover {
             pub id: i32,
+            pub name: String,
             pub eva_identifier: i32,
             pub arrival: Option<DateTime<FixedOffset>>,
             pub arrival_planned: Option<DateTime<FixedOffset>>,
@@ -159,4 +175,13 @@ pub mod traewelling {
 pub enum Error {
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
+    #[error("Got an invalid response from traewelling: {0:#?}")]
+    InvalidTrwlResponse(TrwlErrorResponse),
+}
+
+#[derive(Debug)]
+#[allow(dead_code)] // Debug message
+pub struct TrwlErrorResponse {
+    status_code: StatusCode,
+    message: String,
 }
