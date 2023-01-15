@@ -1,7 +1,10 @@
 name: Docker
 on:
   release:
-    types: [published]
+    types: [created]
+
+concurrency: release-docker-${{ github.ref }}
+
 jobs:
   docker:
     name: Build and Publish Docker Image
